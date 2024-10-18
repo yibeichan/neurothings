@@ -11,7 +11,7 @@ from argparse import ArgumentParser
 
 def process_file(task_file, smoothing_mm, lh_surf, rh_surf, save_dir):
     try:
-        confounds_df, _ = load_confounds_strategy(task_file, denoise_strategy="compcor")
+        confounds_df, _ = load_confounds_strategy(task_file, denoise_strategy="compcor") # add other strategies
         task_img = nib.load(task_file)
         clean_func_signal = signal.clean(task_img.dataobj[:], detrend=True, confounds=confounds_df, standardize='zscore_sample', t_r=1.49)
         print(f"Cleaned {task_file}")
