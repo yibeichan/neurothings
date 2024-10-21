@@ -4,9 +4,9 @@
 #SBATCH --partition=normal
 #SBATCH --output=../logs/GLMsingle_face_%A_%a.out
 #SBATCH --error=../logs/GLMsingle_face_%A_%a.err
-#SBATCH --time=2-00:00:00
-#SBATCH --cpus-per-task=12
-#SBATCH --mem=12G
+#SBATCH --time=18:00:00
+#SBATCH --cpus-per-task=18
+#SBATCH --mem=4G
 #SBATCH --array=0
 #SBATCH --mail-type=FAIL,END
 #SBATCH --mail-user=yibei@mit.edu
@@ -40,7 +40,7 @@ if [ $? -eq 0 ]; then
   mkdir -p "$dest_dir"
 
   # Rsync the output folder to the remote server
-  rsync -avz /om2/scratch/tmp/yibei/friends/output/time_series_v1/${TASK_ID}/ "$dest_dir"
+  rsync -avz /om2/scratch/tmp/yibei/friends/output/GLMsingle/results/${TASK_ID}/${hemi_id}_${roi_id}/ "$dest_dir"
 
 else
   echo "Python job failed for $TASK_ID, $hemi_id, $roi_id, not running rsync."

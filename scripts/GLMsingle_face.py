@@ -9,6 +9,9 @@ import cProfile
 import pstats
 import io
 from memory_profiler import profile
+import shutil
+import multiprocessing
+from functools import partial
 
 import numpy as np
 import nibabel as nib
@@ -82,62 +85,87 @@ def process_brain_data(brain_file):
     except Exception as e:
         raise ValueError(f"Error processing brain data from {brain_file}: {str(e)}")
     
+def retry_rmtree(path, max_retries=5, delay=1):
+    for i in range(max_retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError as e:
+            if i == max_retries - 1:  # last attempt
+                raise
+            time.sleep(delay)
+
+def process_session(ses_id, sub_id, hemi, roi, data_dir, data_dict):
+    # Move the contents of the main for loop here
+    output_dir = join(data_dir, "output", "GLMsingle", "results", sub_id, ses_id)
+    os.makedirs(output_dir, exist_ok=True) 
+    
+    brain_files = get_brain_files(data_dir, sub_id, ses_id, hemi, roi)
+    design_matrix_files = rename_y_files(brain_files)
+    
+    brain_data = []
+    design_matrices = []
+    eids = []
+    
+    for b_file, dm_file in zip(brain_files, design_matrix_files):
+        eid = os.path.basename(dm_file).split("_")[2].split("-")[1]
+        processed_data = process_brain_data(b_file)
+        print(f"Processed data shape: {processed_data.shape}")
+        brain_data.append(processed_data)
+        design_matrices.append(data_dict[f"friends_{eid}"])
+        eids.append(eid)
+    
+    # Save eids to a JSON file
+    eids_file = join(output_dir, f"{ses_id}_eids.json")
+    with open(eids_file, 'w') as f:
+        json.dump(eids, f)
+    
+    print(f"Saved eids for session {ses_id} to {eids_file}")
+
+    # Continue with GLMsingle processing...
+    stimdur = 2
+    tr = 1.49
+    
+    start_time = time.time()
+
+    opt = {
+        'wantlibrary': 1,
+        'wantglmdenoise': 1,
+        'wantfracridge': 1,
+        'wantfileoutputs': [0,0,0,0],
+        'wantmemoryoutputs': [1,1,1,1],
+        'n_jobs': 2
+    }
+    glmsingle_obj = GLM_single(opt)
+    print(f'running GLMsingle...')
+    try:
+        results = glmsingle_obj.fit(design_matrices, brain_data, stimdur, tr, outputdir=output_dir)
+    except OSError:
+        print(f"Encountered file lock, attempting to remove directory: {output_dir}")
+        retry_rmtree(output_dir)
+        results = glmsingle_obj.fit(design_matrices, brain_data, stimdur, tr, outputdir=output_dir)
+    # save results to a file
+    results_file = join(output_dir, f"{hemi}_{roi}_results.npz")
+    np.savez(results_file, **results)
+    print(f"Saved results for session {ses_id} to {results_file}")
+    
+    elapsed_time = time.time() - start_time
+    print(f'Elapsed time for session {ses_id}: {time.strftime("%H:%M:%S", time.gmtime(elapsed_time))}')
 
 @profile
 def main(sub_id, hemi, roi, data_dir, nese_dir):
     dm_file = join(nese_dir, "char_rep_friends", "output", "GLMsingle", "design_matrix_face.npz")
     data_dict = load_design_matrix(dm_file)
-    ses_ids = get_ses_ids(join(data_dir, "output", "time_series_v1", sub_id), hemi, roi)    
-    for ses_id in tqdm(ses_ids, desc="Processing sessions"):  
-        output_dir = join(nese_dir, "char_rep_friends", "output", "GLMsingle", "results", sub_id, ses_id)
-        os.makedirs(output_dir, exist_ok=True) 
-        
-        brain_files = get_brain_files(data_dir, sub_id, ses_id, hemi, roi)
-        design_matrix_files = rename_y_files(brain_files)
-        
-        brain_data = []
-        design_matrices = []
-        eids = []
-        
-        for b_file, dm_file in zip(brain_files, design_matrix_files):
-            eid = os.path.basename(dm_file).split("_")[2].split("-")[1]
-            processed_data = process_brain_data(b_file)
-            print(f"Processed data shape: {processed_data.shape}")
-            brain_data.append(processed_data)
-            design_matrices.append(data_dict[f"friends_{eid}"])
-            eids.append(eid)
-        
-        # Save eids to a JSON file
-        eids_file = join(output_dir, f"{ses_id}_eids.json")
-        with open(eids_file, 'w') as f:
-            json.dump(eids, f)
-        
-        print(f"Saved eids for session {ses_id} to {eids_file}")
+    ses_ids = get_ses_ids(join(data_dir, "output", "time_series_v1", sub_id), hemi, roi)[49:]
 
-        # Continue with GLMsingle processing...
-        stimdur = 2
-        tr = 1.49
-        
-        start_time = time.time()
+    # Create a partial function with fixed arguments
+    process_session_partial = partial(process_session, sub_id=sub_id, hemi=hemi, roi=roi, 
+                                      data_dir=data_dir, data_dict=data_dict)
 
-        opt = {
-            'wantlibrary': 1,
-            'wantglmdenoise': 1,
-            'wantfracridge': 1,
-            'wantfileoutputs': [0,0,0,0],
-            'wantmemoryoutputs': [1,1,1,1],
-            'n_jobs': 12
-        }
-        glmsingle_obj = GLM_single(opt)
-        print(f'running GLMsingle...')
-        results = glmsingle_obj.fit(design_matrices, brain_data, stimdur, tr, outputdir=output_dir)
-        # save results to a file
-        results_file = join(output_dir, f"{hemi}_{roi}_results.npz")
-        np.savez(results_file, **results)
-        print(f"Saved results for session {ses_id} to {results_file}")
-        
-        elapsed_time = time.time() - start_time
-        print(f'Elapsed time: {time.strftime("%H:%M:%S", time.gmtime(elapsed_time))}')
+    # Use multiprocessing to parallelize the session processing
+    n_jobs = 8
+    with multiprocessing.Pool(n_jobs) as pool:
+        list(tqdm(pool.imap(process_session_partial, ses_ids), total=len(ses_ids), desc="Processing sessions"))
 
 if __name__ == "__main__":
     load_dotenv()
