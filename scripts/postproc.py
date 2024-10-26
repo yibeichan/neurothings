@@ -99,7 +99,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Postprocess fmriprep data")
     parser.add_argument("sub_id", help="Subject ID (e.g., sub-001)", type=str)
     parser.add_argument("task", help="Task name (e.g., hcptrt)", type=str)
-    parser.add_argument("--smoothing_mm", type=int, default=2.15, help="Smoothing kernel size in mm")
+    parser.add_argument("--smoothing_mm", type=float, default=2.15, help="Smoothing kernel size in mm")
     args = parser.parse_args()
     
     sub_id = args.sub_id
