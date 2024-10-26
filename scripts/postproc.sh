@@ -23,3 +23,16 @@ TASK_ID=${sub_ids[$SLURM_ARRAY_TASK_ID]}
 echo "Processing: $TASK_ID"
 
 python postproc.py "${TASK_ID}" "friends"
+
+if [ $? -ne 0 ]; then
+    echo "Error: Python script failed for ${TASK_ID}"
+    exit 1
+fi
+
+# Add check for rsync success
+dest_dir="/nese/mit/group/sig/projects/cneuromod/postproc_fmriprep/friends"
+rsync -avL /om2/scratch/tmp/yibei/friends/output/friends_postproc/ "${dest_dir}"
+if [ $? -ne 0 ]; then
+    echo "Error: rsync failed"
+    exit 1
+fi
