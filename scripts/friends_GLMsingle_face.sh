@@ -7,7 +7,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=4G
-#SBATCH --array=30-59
+#SBATCH --array=0-59
 #SBATCH --mail-type=FAIL,END
 #SBATCH --mail-user=yibei@mit.edu
 
@@ -30,7 +30,7 @@ roi_id=${roi_ids[$roi_index]}
 
 echo "Processing: $TASK_ID, $hemi_id, $roi_id"
 
-python GLMsingle_face.py "${TASK_ID}" "${hemi_id}" "${roi_id}"
+python friends_GLMsingle_face.py "${TASK_ID}" "${hemi_id}" "${roi_id}"
 
 if [ $? -eq 0 ]; then
   echo "Python job completed successfully for $TASK_ID, $hemi_id, $roi_id."
