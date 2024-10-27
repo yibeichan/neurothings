@@ -23,12 +23,14 @@ warnings.filterwarnings('ignore')
 
 # Add type hints for better code documentation
 def get_ses_ids(sub_dir: str) -> list[str]:
-    # ses_ids are the subdirectories in sub_dir
-    ses_ids = [os.path.basename(d) for d in glob.glob(join(sub_dir, "*"))]
-    return ses_ids
+    # Only include directories that match the session pattern (ses-XXX)
+    ses_ids = [os.path.basename(d) for d in glob.glob(join(sub_dir, "ses-*")) if os.path.isdir(d)]
+    print(f"Found {len(ses_ids)} sessions for {sub_dir}")
+    return sorted(ses_ids)
 
 def get_brain_files(sub_dir, ses_id):
-    brain_files = glob.glob(join(sub_dir, ses_id, "*-91k_bold.dtseries.nii"))
+    brain_files = sorted(glob.glob(join(sub_dir, ses_id, "func", "*-91k_bold.dtseries.nii")))
+    # lets print all files in join(sub_dir, ses_id, "func")
     if not brain_files:
         raise FileNotFoundError(f"No brain files found for {ses_id}")
     return brain_files
@@ -91,7 +93,7 @@ def process_session(sub_id, scratch_dir, ses_id, data_dict, n_jobs):
     os.makedirs(output_dir, exist_ok=True) 
     os.makedirs(figure_dir, exist_ok=True)
     
-    brain_files = get_brain_files(scratch_dir, ses_id)
+    brain_files = get_brain_files(join(dataset_dir, "fmriprep", "friends", f"{sub_id}"), ses_id)
     design_matrix_files = rename_y_files(brain_files)
     
     brain_data = []
@@ -102,7 +104,6 @@ def process_session(sub_id, scratch_dir, ses_id, data_dict, n_jobs):
         eid = os.path.basename(dm_file).split("_")[2].split("-")[1]
         logging.info(f"Processing file pair: {b_file}, {dm_file}")
         processed_data = process_brain_data(sub_id, b_file)
-        print(f"Processed data shape: {processed_data.shape}")
         # If this is the only run for the session (len(brain_files) == 1)
         if len(brain_files) == 1:
             # Split the data in half
@@ -141,7 +142,7 @@ def process_session(sub_id, scratch_dir, ses_id, data_dict, n_jobs):
         'wantglmdenoise': 1,
         'wantfracridge': 1,
         'wantfileoutputs': [0,0,0,0],
-        'wantmemoryoutputs': [0,0,0,1],
+        'wantmemoryoutputs': [1,1,1,1],
         'n_jobs': n_jobs
     }
     glmsingle_obj = GLM_single(opt)
@@ -165,34 +166,47 @@ def get_last_session_position(data_dir, sub_id, ses_ids):
     results_dir = join(data_dir, "output", "GLMsingle", "results", sub_id)
     
     if not os.path.exists(results_dir):
+        logging.info("No results directory found, starting from first session")
         return 0
         
-    # Get the highest session number from the directories
+    # Get all completed session directories
     completed_sessions = [d for d in os.listdir(results_dir) if d.startswith('ses-')]
     if not completed_sessions:
+        logging.info("Results directory empty, starting from first session")
         return 0
     
-    last_session = max(completed_sessions)
-    # Find where this session is in ses_ids
+    # Ensure both lists are properly sorted
+    completed_sessions.sort()  # Sort completed sessions
+    last_session = completed_sessions[-1]  # Get the last completed session
+    
+    # Find position in sorted ses_ids
     try:
-        return ses_ids.index(last_session)
+        position = ses_ids.index(last_session)
+        return position
     except ValueError:
+        logging.warning(f"Last completed session {last_session} not found in expected session list. Starting from beginning.")
         return 0
-    
+
 def main(sub_id, dataset_dir, scratch_dir, n_jobs):
     dm_file = join(scratch_dir, "output", "GLMsingle", "design_matrix_face.npz")
     data_dict = load_design_matrix(dm_file)
-    ses_ids = get_ses_ids(join(dataset_dir, "fmriprep", "friends", f"{sub_id}"))  
-
+    ses_ids = get_ses_ids(join(dataset_dir, "fmriprep", "friends", f"{sub_id}"))
+    print(f"Found {len(ses_ids)} sessions for {sub_id}")
+    print(ses_ids)
+    
     start_idx = get_last_session_position(scratch_dir, sub_id, ses_ids)
-    if start_idx > 0:
-        logging.info(f"Resuming from session {ses_ids[start_idx]}")
+    if start_idx >= len(ses_ids):
+        logging.info("All sessions have been processed")
+        return
+    elif start_idx > 0:
+        logging.info(f"Resuming from session {ses_ids[start_idx]} (position {start_idx + 1} of {len(ses_ids)})")
     else:
-        logging.info("Starting from the beginning")  
+        logging.info(f"Starting from first session (total sessions: {len(ses_ids)})")
+    
     
     for ses_id in tqdm(ses_ids[start_idx:], desc="Processing sessions"):
         process_session(sub_id, scratch_dir, ses_id, data_dict, n_jobs)
-        
+
 if __name__ == "__main__":
     load_dotenv()
 
@@ -201,7 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--n_jobs", help="Number of jobs", type=int, default=32)
     args = parser.parse_args()
 
-    scratch_dir = os.getenv("SCRATCH_DIR")
+    scratch_dir = os.path.join(os.getenv("SCRATCH_DIR"), "friends")
     dataset_dir = os.getenv("DATASET_DIR")
     # Start CPU profiling
     pr = cProfile.Profile()
