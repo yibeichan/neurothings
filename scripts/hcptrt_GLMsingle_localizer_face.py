@@ -7,7 +7,7 @@ import time
 from argparse import ArgumentParser
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List
 
 from dotenv import load_dotenv
 
