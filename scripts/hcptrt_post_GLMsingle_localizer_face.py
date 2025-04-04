@@ -74,45 +74,23 @@ def main(sub_id, task, glm_results, designinfo, stim_files, output_dir):
     logging.info(f"Comparing {unique_stims[1]} vs {unique_stims[2]}")
 
     # Statistical testing
-    t_stats = np.zeros(n_signal_vertices)
-    p_values = np.zeros(n_signal_vertices)
-
-    for signal in range(n_signal_vertices):
-        t_stat, p_val = stats.ttest_rel(group2[signal, :], group3[signal, :])
-        t_stats[signal] = t_stat
-        p_values[signal] = p_val
+    t_stats_full = np.zeros(data.shape[0])  # Initialize with full brain size
+    p_values_full = np.zeros(data.shape[0])
     
-    # Multiple comparison correction
-    significant_mask = fdrcorrection(p_values, alpha=0.05)[0]
-    n_significant = np.sum(significant_mask)
-    logging.info(f"Found {n_significant} significant vertices after FDR correction")
-
-    # Find vertices where group2 > group3
-    positive_significant = (t_stats > 0) & significant_mask
-    n_positive = np.sum(positive_significant)
-    logging.info(f"Found {n_positive} vertices with {unique_stims[1]} > {unique_stims[2]}")
-
-    # Map back to full brain space
-    full_mask = np.zeros(data.shape[0], dtype=bool)
+    # Only compute statistics for signal vertices
     signal_indices = np.where(signal_mask)[0]
-    significant_vertices_full = signal_indices[positive_significant]
-    full_mask[significant_vertices_full] = True
+    for i, signal_idx in enumerate(signal_indices):
+        t_stat, p_val = stats.ttest_rel(group2[i, :], group3[i, :])
+        t_stats_full[signal_idx] = t_stat
+        p_values_full[signal_idx] = p_val
     
-    # Validate results
-    assert np.sum(full_mask) == n_positive, "Mismatch in number of significant vertices"
-    
-    # Save results
-    output_file = os.path.join(output_dir, f"{sub_id}_{task}_full_mask.npy")
-    np.save(output_file, full_mask)
-    logging.info(f"Saved mask to: {output_file}")
 
     stats_dict = {
         'total_vertices': data.shape[0],
+        'signal_mask': signal_mask,
         'signal_vertices': n_signal_vertices,
-        'significant_vertices': n_significant,
-        'positive_significant': n_positive,
-        't_stats': t_stats,
-        'p_values': p_values
+        't_stats': t_stats_full,
+        'p_values': p_values_full
     }
     stats_file = os.path.join(output_dir, f"{sub_id}_{task}_stats.npz")
     np.savez(stats_file, **stats_dict)

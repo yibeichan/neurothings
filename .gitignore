@@ -6,6 +6,7 @@ __pycache__/
 .env
 logs/
 
+output/
 # C extensions
 *.so
 */*.ipynb_checkpoints

@@ -64,14 +64,16 @@ def load_design_matrix(dm_file):
         raise ValueError(f"Error loading design matrix from {dm_file}: {str(e)}")
 
 # Consider adding validation for the mask file existence
-def process_brain_data(sub_id, brain_file):
+def process_brain_data(sub_id, brain_file, mask=False):
     try:
         brain_data = nib.load(brain_file).get_fdata()
-        mask_file = f"/orcd/scratch/bcs/001/yibei/hcptrt/output/GLMsingle/facemask/{sub_id}_wm_full_mask.npy"
-        if not os.path.exists(mask_file):
-            raise FileNotFoundError(f"Mask file not found: {mask_file}")
-        mask_data = np.load(mask_file)
-        return brain_data[:, mask_data == 1].T
+        if mask:
+            mask_file = f"/orcd/scratch/bcs/001/yibei/hcptrt/output/GLMsingle/facemask/{sub_id}_wm_full_mask.npy"
+            if not os.path.exists(mask_file):
+                raise FileNotFoundError(f"Mask file not found: {mask_file}")
+            mask_data = np.load(mask_file)
+            return brain_data[:, mask_data == 1].T
+        return brain_data.T
     except Exception as e:
         raise ValueError(f"Error processing brain data from {brain_file}: {str(e)}")
 
@@ -212,7 +214,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser(description="Fit GLMsingle to the data.")
     parser.add_argument("sub_id", help="Subject ID", type=str)
-    parser.add_argument("--n_jobs", help="Number of jobs", type=int, default=32)
+    parser.add_argument("--n_jobs", help="Number of jobs", type=int, default=24)
     args = parser.parse_args()
 
     scratch_dir = os.path.join(os.getenv("SCRATCH_DIR"), "friends")

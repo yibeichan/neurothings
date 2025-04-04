@@ -4,8 +4,8 @@
 #SBATCH --partition=mit_normal
 #SBATCH --output=../logs/GLMsingle_localizer_face_%A_%a.out
 #SBATCH --error=../logs/GLMsingle_localizer_face_%A_%a.err
-#SBATCH --time=02:00:00
-#SBATCH --cpus-per-task=32
+#SBATCH --time=00:20:00
+#SBATCH --cpus-per-task=4
 #SBATCH --mem=12G
 #SBATCH --array=0-5
 #SBATCH --mail-type=FAIL,END
@@ -21,19 +21,19 @@ TASK_ID=${sub_ids[$sub_index]}
 
 echo "Processing: $TASK_ID"
 
-# Run first script
-echo "Activating environment for first script..."
-conda activate glmsingle
-if ! python hcptrt_GLMsingle_localizer_face.py "${TASK_ID}"; then
-    echo "First script failed! Exiting..."
-    conda deactivate
-    exit 1
-fi
-conda deactivate
+# # Run first script
+# echo "Activating environment for first script..."
+# conda activate glmsingle
+# if ! python hcptrt_GLMsingle_localizer_face.py "${TASK_ID}"; then
+#     echo "First script failed! Exiting..."
+#     conda deactivate
+#     exit 1
+# fi
+# conda deactivate
 
 # Only reach here if first script succeeded
 echo "First script succeeded. Running second script..."
-conda activate neuro
+conda activate glmsingle
 if ! python hcptrt_post_GLMsingle_localizer.py "${TASK_ID}"; then
     echo "Second script failed! Exiting..."
     conda deactivate
