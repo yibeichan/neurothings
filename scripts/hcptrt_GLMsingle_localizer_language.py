@@ -174,8 +174,6 @@ def main(sub_id: str, task: str, tr: float, n_jobs: int, event_files: List[str],
 
     # --- Brain Data Loading (Assuming similar logic as before, check if reshape needed) ---
     brain_data = []
-    successfully_loaded_indices = [] # Keep track of which runs loaded successfully
-    original_indices = list(range(len(brain_files)))
 
     # Adjust design matrix loading to track successful loads
     # We need to modify load_event_and_json_files return value or track skips
@@ -202,7 +200,8 @@ def main(sub_id: str, task: str, tr: float, n_jobs: int, event_files: List[str],
             logging.warning(f"N_tr from JSON failed for {json_file}, trying NIfTI...")
             try:
                 img_header = nib.load(brain_file).header
-                n_tr = img_header.get_data_shape()[3]
+                # For CIFTI dtseries, time is the first dimension
+                n_tr = img_header.get_data_shape()[0]
                 logging.info(f"N_tr from NIfTI header: {n_tr}")
             except Exception as e_nib:
                 logging.error(f"Cannot determine n_tr for run {i+1} ({brain_file}): {e_nib}. Skipping run.")
@@ -231,13 +230,15 @@ def main(sub_id: str, task: str, tr: float, n_jobs: int, event_files: List[str],
         # 3. Load Brain Data
         try:
             img = nib.load(brain_file)
+            # Load CIFTI data (time, grayordinates) and transpose to (grayordinates, time) for GLMsingle
             brain_data.append(img.get_fdata().T)
         except Exception as e:
             logging.error(f"Error loading brain file {brain_file}: {str(e)}")
+            # Skip run if brain data fails to load
+            continue
 
         # If all parts succeeded for this run, add them to lists
         design_matrices.append(design_matrix)
-        brain_data.append(brain_run_data)
         valid_session_indices.append(i) # Keep track of the original index
 
     # --- End Revised Data Loading Loop --- #
