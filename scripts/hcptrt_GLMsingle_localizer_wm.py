@@ -63,13 +63,9 @@ def load_event_and_json_files(event_files: List[str], json_files: List[str], bra
             
             df = pd.read_csv(event_file, sep="\t")
             # Drop rows where stim_type is NaN as these won't form valid predictors
-            df = df.dropna(subset=["trial_type"])
+            df = df.dropna(subset=["trial_type", "stim_type"])
             # Create the predictor column
-            df["predictor"] = np.where(
-                df["stim_type"].isna(),
-                df["trial_type"].astype(str),
-                df["trial_type"].astype(str) + "_" + df["stim_type"].astype(str)
-            )
+            df["predictor"] = df["trial_type"].astype(str) + "_" + df["stim_type"].astype(str)
             df["onset_TR"] = df["onset"] / tr
             binary_df = get_binary_df(df, n_tr, sorted_unique_predictors)
             design_matrices.append(binary_df.to_numpy())
@@ -91,17 +87,13 @@ def main(sub_id: str, task: str, tr: float, n_jobs: int, event_files: List[str],
         try:
             df = pd.read_csv(event_file, sep="\t")
             # Drop rows only if trial_type is NaN, as it's essential for the predictor
-            df = df.dropna(subset=["trial_type"])
+            df = df.dropna(subset=["trial_type", "stim_type"])
             if df.empty:
                 logging.warning(f"Skipping file {event_file} as it has no rows with valid trial_type.")
                 continue
 
             # Create predictor column conditionally
-            df["predictor"] = np.where(
-                df["stim_type"].isna(),
-                df["trial_type"].astype(str),
-                df["trial_type"].astype(str) + "_" + df["stim_type"].astype(str)
-            )
+            df["predictor"] = df["trial_type"].astype(str) + "_" + df["stim_type"].astype(str)
             all_unique_predictors.update(df["predictor"].unique())
         except (FileNotFoundError, pd.errors.EmptyDataError) as e:
             logging.warning(f"Skipping file {event_file} due to error: {e}")
