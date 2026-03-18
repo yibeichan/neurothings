@@ -1,4 +1,78 @@
-# SLURM Submit Tracking (`sbatch_track.sh`)
+# SLURM Tools
+
+## SLURM Babysitter (`slurm_babysitter.sh`)
+
+Monitors a SLURM array job. When tasks fail, it automatically resubmits them:
+- **TIMEOUT / PREEMPTED** → resubmit with 1.5× walltime
+- **OUT_OF_MEMORY** → resubmit with 1.5× memory
+- **FAILED** → logged but NOT retried (likely a code bug)
+
+### Usage
+
+```bash
+# Dry run first
+bash tools/slurm/slurm_babysitter.sh 9892762 --dry-run
+
+# Run as a lightweight SLURM job (survives SSH disconnect)
+sbatch --job-name=babysit_9892762 --partition=ou_bcs_normal \
+       --time=24:00:00 --mem=512M --cpus-per-task=1 \
+       --output=logs/babysitter_%j.out \
+       tools/slurm/slurm_babysitter.sh 9892762
+
+# Customize behavior
+bash tools/slurm/slurm_babysitter.sh 9892762 \
+    --poll-interval 15 --max-retries 3 --time-scale 2.0
+```
+
+### Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--poll-interval MIN` | 10 | Minutes between `sacct` polls |
+| `--max-retries N` | 2 | Max retries per array task |
+| `--time-scale FACTOR` | 1.5 | Walltime multiplier for TIMEOUT |
+| `--mem-scale FACTOR` | 1.5 | Memory multiplier for OOM |
+| `--state-dir DIR` | `/tmp/slurm_babysitter_<JOB_ID>` | Retry state directory |
+| `--dry-run` | — | Print commands without executing |
+| `--no-email` | — | Skip summary email |
+| `--email ADDR` | `$USER@mit.edu` | Summary email address |
+
+### Failure handling
+
+| SLURM State | Action | Rationale |
+|-------------|--------|-----------|
+| `TIMEOUT` | Resubmit with `--time` × 1.5 | Job ran out of walltime |
+| `OUT_OF_MEMORY` | Resubmit with `--mem` × 1.5 | Job ran out of RAM |
+| `PREEMPTED` / `CANCELLED` | Resubmit with `--time` × 1.5 | Cluster scheduling issue |
+| `FAILED` | **Log only, do NOT retry** | Likely a code bug — fix the script first |
+| `COMPLETED` | No action | Already done |
+| `RUNNING` / `PENDING` | Wait | Still in progress |
+
+Scaled times are automatically capped at the partition's max walltime (e.g., 24h for `ou_bcs_normal`, 48h for `pi_satra`). A warning is logged when the cap applies.
+
+### How it works
+
+1. Caches the original `SubmitLine` from `sacct` — no need to pass the sbatch command
+2. Polls `sacct` every N minutes for task states
+3. Resubmits retriable tasks with scaled resources, using `sbatch_track.sh` for logging
+4. Tracks retry counts in the state directory (crash-safe — survives restart)
+5. Exits when all tasks reach a terminal state; emails a summary
+
+### State directory
+
+```
+/tmp/slurm_babysitter_9892762/
+  .lock              # prevents duplicate babysitters
+  parent_submitline  # cached original sbatch command
+  summary.log        # timestamped poll log
+  task_3.retries     # retry count for task 3
+  task_3.child_job   # job ID of latest retry
+  task_3.history     # full retry history
+```
+
+---
+
+## SLURM Submit Tracking (`sbatch_track.sh`)
 
 `sbatch_track.sh` is a thin wrapper around `sbatch`.
 It submits your job normally, then appends one TSV row with submission metadata.
